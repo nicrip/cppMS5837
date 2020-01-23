@@ -13,6 +13,13 @@ public:
 	static const uint8_t MS5837_30BA;
 	static const uint8_t MS5837_02BA;
 
+	static const uint8_t OSR_256;
+	static const uint8_t OSR_512;
+	static const uint8_t OSR_1024;
+	static const uint8_t OSR_2048;
+	static const uint8_t OSR_4096;
+	static const uint8_t OSR_8192;
+
 	MS5837();
 
 	bool init();
@@ -48,6 +55,8 @@ public:
 	 */
 	float altitude();
 
+	void setOverSampling(int oversampling);
+
 private:
 	uint16_t C[8];
 	uint32_t D1, D2;
@@ -58,6 +67,7 @@ private:
   I2CDevice device;
 	unsigned char buf[10];
 	unsigned char rbuf[10];
+	uint8_t _oversampling = 5;
 
 	float fluidDensity;
 

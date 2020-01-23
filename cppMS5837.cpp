@@ -10,8 +10,8 @@ using namespace std::chrono;
 #define MS5837_RESET              0x1E
 #define MS5837_ADC_READ           0x00
 #define MS5837_PROM_READ          0xA0
-#define MS5837_CONVERT_D1_8192    0x4A
-#define MS5837_CONVERT_D2_8192    0x5A
+#define MS5837_CONVERT_D1_256     0x40
+#define MS5837_CONVERT_D2_256     0x50
 
 const float MS5837::Pa = 100.0f;
 const float MS5837::bar = 0.001f;
@@ -19,6 +19,13 @@ const float MS5837::mbar = 1.0f;
 
 const uint8_t MS5837::MS5837_30BA = 0;
 const uint8_t MS5837::MS5837_02BA = 1;
+
+const uint8_t MS5837::OSR_256  = 0;
+const uint8_t MS5837::OSR_512  = 1;
+const uint8_t MS5837::OSR_1024 = 2;
+const uint8_t MS5837::OSR_2048 = 3;
+const uint8_t MS5837::OSR_4096 = 4;
+const uint8_t MS5837::OSR_8192 = 5;
 
 MS5837::MS5837() {
 	fluidDensity = 1029;
@@ -75,10 +82,10 @@ void MS5837::setFluidDensity(float density) {
 
 void MS5837::read() {
 	// Request D1 conversion
-	buf[0] = MS5837_CONVERT_D1_8192;
+	buf[0] = MS5837_CONVERT_D1_256 + 2*_oversampling;
 	i2c_ioctl_write(&device, 0x0, buf, 1);
 
-	std::this_thread::sleep_for(milliseconds(20));	// Max conversion time per datasheet
+	std::this_thread::sleep_for(microseconds((long)round(2.5 * pow(2, 8+_oversampling))));
 
 	buf[0] = MS5837_ADC_READ;
 	i2c_ioctl_write(&device, 0x0, buf, 1);
@@ -92,10 +99,10 @@ void MS5837::read() {
 	}
 
 	// Request D2 conversion
-	buf[0] = MS5837_CONVERT_D2_8192;
+	buf[0] = MS5837_CONVERT_D2_256 + 2*_oversampling;
 	i2c_ioctl_write(&device, 0x0, buf, 1);
 
-	std::this_thread::sleep_for(milliseconds(20));	// Max conversion time per datasheet
+	std::this_thread::sleep_for(microseconds((long)round(2.5 * pow(2, 8+_oversampling))));
 
 	buf[0] = MS5837_ADC_READ;
 	i2c_ioctl_write(&device, 0x0, buf, 1);
@@ -195,6 +202,16 @@ float MS5837::altitude() {
 	return (1-pow((pressure()/1013.25),.190284))*145366.45*.3048;
 }
 
+void MS5837::setOverSampling(int oversampling){
+	if (oversampling <= 5 || oversampling >= 0)
+	{
+		_oversampling = oversampling;
+	}
+	else
+	{
+		// Invalid oversampling option
+	}
+}
 
 uint8_t MS5837::crc4(uint16_t n_prom[]) {
 	uint16_t n_rem = 0;
@@ -226,6 +243,9 @@ int main(int argc, char *argv[])
 {
   MS5837 ms5837;
   ms5837.init();
+	ms5837.setModel(MS5837::MS5837_30BA);
+  ms5837.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
+  ms5837.setOverSampling(5);
 	while(1) {
 		ms5837.read();
 
