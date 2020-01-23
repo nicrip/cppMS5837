@@ -56,6 +56,8 @@ private:
 	uint8_t _model;
   int bus;
   I2CDevice device;
+	unsigned char buf[10];
+	unsigned char rbuf[10];
 
 	float fluidDensity;
 
