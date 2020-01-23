@@ -238,20 +238,3 @@ uint8_t MS5837::crc4(uint16_t n_prom[]) {
 
 	return n_rem ^ 0x00;
 }
-
-int main(int argc, char *argv[])
-{
-  MS5837 ms5837;
-  ms5837.init();
-	ms5837.setModel(MS5837::MS5837_30BA);
-  ms5837.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
-  ms5837.setOverSampling(5);
-	while(1) {
-		ms5837.read();
-
-		std::cout << "Pressure: " << ms5837.pressure() << " mbar" << std::endl;
-		std::cout << "Temperature: " << ms5837.temperature() << " deg C" << std::endl;
-		std::cout << "Depth: " << ms5837.depth() << " m" << std::endl;
-		std::cout << "Altitude: " << ms5837.altitude() << " m above mean sea level" << std::endl << std::endl;
-	}
-}
