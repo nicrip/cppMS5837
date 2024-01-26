@@ -1,5 +1,5 @@
 #include <cstdint>
-#include "i2c.h"
+#include "pigpiod_if2.h"
 
 #ifndef MS5837_H
 #define MS5837_H
@@ -64,9 +64,10 @@ private:
 	int32_t P;
 	uint8_t _model;
   int bus;
-  I2CDevice device;
-	unsigned char buf[10];
-	unsigned char rbuf[10];
+	int gpio_commander;
+  	int i2c_handle;
+	char buf[10];
+	char rbuf[10];
 	uint8_t _oversampling = 5;
 
 	float fluidDensity;

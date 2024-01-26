@@ -28,158 +28,151 @@ const uint8_t MS5837::OSR_4096 = 4;
 const uint8_t MS5837::OSR_8192 = 5;
 
 MS5837::MS5837() {
-	fluidDensity = 1029;
+    fluidDensity = 1029;
 }
 
 bool MS5837::init() {
-	// Reset the MS5837, per datasheet
-  if ((bus = i2c_open("/dev/i2c-2")) == -1) {
-    std::cout << "i2c bus could not be opened... Exiting." << std::endl;
-    exit(0);
-  }
-  device.bus = bus;
-  device.addr = MS5837_ADDR;
-  device.tenbit = 0;
-  device.delay = 1;
-  device.flags = 0;
-  device.page_bytes = 8;
-  device.iaddr_bytes = 0;
+    gpio_commander = pigpio_start(NULL, NULL);								// start PiGPIO object on local computer
+    i2c_handle = i2c_open(gpio_commander, 1, MS5837_ADDR, 0);
+    if (i2c_handle < 0) {
+        std::cout << "i2c bus could not be opened... Exiting." << std::endl;
+        exit(0);
+    }
 
-	buf[0] = MS5837_RESET;
-	i2c_ioctl_write(&device, 0x0, buf, 1);
+    buf[0] = MS5837_RESET;
+    i2c_write_device(gpio_commander, i2c_handle, buf, 1);
+    std::this_thread::sleep_for(milliseconds(10));
 
-	std::this_thread::sleep_for(milliseconds(10));
+    for(uint8_t i = 0; i < 7; i++) {
+        buf[0] = MS5837_PROM_READ+i*2;
+        i2c_write_device(gpio_commander, i2c_handle, buf, 1);
 
-	for(uint8_t i = 0; i < 7; i++) {
-		buf[0] = MS5837_PROM_READ+i*2;
-		i2c_ioctl_write(&device, 0x0, buf, 1);
+        if(i2c_read_device(gpio_commander, i2c_handle, rbuf, 2) != 2) {
+            std::cout << "Read error... Exiting!" << std::endl;
+            exit(0);
+        } else {
+            C[i] = rbuf[0] << 8 | rbuf[1];
+        }
+    }
 
-		if(i2c_ioctl_read(&device, 0x0, rbuf, 2) != 2) {
-			std::cout << "Read error... Exiting!" << std::endl;
-			exit(0);
-		} else {
-			C[i] = rbuf[0] << 8 | rbuf[1];
-		}
-	}
+    uint8_t crcRead = C[0] >> 12;
+    uint8_t crcCalculated = crc4(C);
 
-	uint8_t crcRead = C[0] >> 12;
-	uint8_t crcCalculated = crc4(C);
+    if(crcCalculated == crcRead) {
+        return true; // Initialization success
+    }
 
-	if(crcCalculated == crcRead) {
-		return true; // Initialization success
-	}
-
-	return false; // CRC fail
+    return false; // CRC fail
 }
 
 void MS5837::setModel(uint8_t model) {
-	_model = model;
+    _model = model;
 }
 
 void MS5837::setFluidDensity(float density) {
-	fluidDensity = density;
+    fluidDensity = density;
 }
 
 void MS5837::read() {
-	// Request D1 conversion
-	buf[0] = MS5837_CONVERT_D1_256 + 2*_oversampling;
-	i2c_ioctl_write(&device, 0x0, buf, 1);
+    // Request D1 conversion
+    buf[0] = MS5837_CONVERT_D1_256 + 2*_oversampling;
+    i2c_write_device(gpio_commander, i2c_handle, buf, 1);
 
-	std::this_thread::sleep_for(microseconds((long)round(2.5 * pow(2, 8+_oversampling))));
+    std::this_thread::sleep_for(microseconds((long)round(2.5 * pow(2, 8+_oversampling))));
 
-	buf[0] = MS5837_ADC_READ;
-	i2c_ioctl_write(&device, 0x0, buf, 1);
+    buf[0] = MS5837_ADC_READ;
+    i2c_write_device(gpio_commander, i2c_handle, buf, 1);
 
-	if(i2c_ioctl_read(&device, 0x0, rbuf, 3) != 3) {
-		std::cout << "Read error... Exiting!" << std::endl;
-		exit(0);
-	} else {
-		D1 = 0;
-		D1 = rbuf[0] << 16 | rbuf[1] << 8 | rbuf[2];
-	}
+    if(i2c_read_device(gpio_commander, i2c_handle, rbuf, 3) != 3) {
+        std::cout << "Read error... Exiting!" << std::endl;
+        exit(0);
+    } else {
+        D1 = 0;
+        D1 = rbuf[0] << 16 | rbuf[1] << 8 | rbuf[2];
+    }
 
-	// Request D2 conversion
-	buf[0] = MS5837_CONVERT_D2_256 + 2*_oversampling;
-	i2c_ioctl_write(&device, 0x0, buf, 1);
+    // Request D2 conversion
+    buf[0] = MS5837_CONVERT_D2_256 + 2*_oversampling;
+    i2c_write_device(gpio_commander, i2c_handle, buf, 1);
 
-	std::this_thread::sleep_for(microseconds((long)round(2.5 * pow(2, 8+_oversampling))));
+    std::this_thread::sleep_for(microseconds((long)round(2.5 * pow(2, 8+_oversampling))));
 
-	buf[0] = MS5837_ADC_READ;
-	i2c_ioctl_write(&device, 0x0, buf, 1);
+    buf[0] = MS5837_ADC_READ;
+    i2c_write_device(gpio_commander, i2c_handle, buf, 1);
 
-	if(i2c_ioctl_read(&device, 0x0, rbuf, 3) != 3) {
-		std::cout << "Read error... Exiting!" << std::endl;
-		exit(0);
-	} else {
-		D2 = 0;
-		D2 = rbuf[0] << 16 | rbuf[1] << 8 | rbuf[2];
-	}
+    if(i2c_read_device(gpio_commander, i2c_handle, rbuf, 3) != 3) {
+        std::cout << "Read error... Exiting!" << std::endl;
+        exit(0);
+    } else {
+        D2 = 0;
+        D2 = rbuf[0] << 16 | rbuf[1] << 8 | rbuf[2];
+    }
 
-	calculate();
+    calculate();
 }
 
 void MS5837::calculate() {
-	// Given C1-C6 and D1, D2, calculated TEMP and P
-	// Do conversion first and then second order temp compensation
+    // Given C1-C6 and D1, D2, calculated TEMP and P
+    // Do conversion first and then second order temp compensation
 
-	int32_t dT = 0;
-	int64_t SENS = 0;
-	int64_t OFF = 0;
-	int32_t SENSi = 0;
-	int32_t OFFi = 0;
-	int32_t Ti = 0;
-	int64_t OFF2 = 0;
-	int64_t SENS2 = 0;
+    int32_t dT = 0;
+    int64_t SENS = 0;
+    int64_t OFF = 0;
+    int32_t SENSi = 0;
+    int32_t OFFi = 0;
+    int32_t Ti = 0;
+    int64_t OFF2 = 0;
+    int64_t SENS2 = 0;
 
-	// Terms called
-	dT = D2-uint32_t(C[5])*256l;
-	if ( _model == MS5837_02BA ) {
-		SENS = int64_t(C[1])*65536l+(int64_t(C[3])*dT)/128l;
-		OFF = int64_t(C[2])*131072l+(int64_t(C[4])*dT)/64l;
-		P = (D1*SENS/(2097152l)-OFF)/(32768l);
-	} else {
-		SENS = int64_t(C[1])*32768l+(int64_t(C[3])*dT)/256l;
-		OFF = int64_t(C[2])*65536l+(int64_t(C[4])*dT)/128l;
-		P = (D1*SENS/(2097152l)-OFF)/(8192l);
-	}
+    // Terms called
+    dT = D2-uint32_t(C[5])*256l;
+    if ( _model == MS5837_02BA ) {
+        SENS = int64_t(C[1])*65536l+(int64_t(C[3])*dT)/128l;
+        OFF = int64_t(C[2])*131072l+(int64_t(C[4])*dT)/64l;
+        P = (D1*SENS/(2097152l)-OFF)/(32768l);
+    } else {
+        SENS = int64_t(C[1])*32768l+(int64_t(C[3])*dT)/256l;
+        OFF = int64_t(C[2])*65536l+(int64_t(C[4])*dT)/128l;
+        P = (D1*SENS/(2097152l)-OFF)/(8192l);
+    }
 
-	// Temp conversion
-	TEMP = 2000l+int64_t(dT)*C[6]/8388608LL;
+    // Temp conversion
+    TEMP = 2000l+int64_t(dT)*C[6]/8388608LL;
 
-	//Second order compensation
-	if ( _model == MS5837_02BA ) {
-		if((TEMP/100)<20){         //Low temp
-			Ti = (11*int64_t(dT)*int64_t(dT))/(34359738368LL);
-			OFFi = (31*(TEMP-2000)*(TEMP-2000))/8;
-			SENSi = (63*(TEMP-2000)*(TEMP-2000))/32;
-		}
-	} else {
-		if((TEMP/100)<20){         //Low temp
-			Ti = (3*int64_t(dT)*int64_t(dT))/(8589934592LL);
-			OFFi = (3*(TEMP-2000)*(TEMP-2000))/2;
-			SENSi = (5*(TEMP-2000)*(TEMP-2000))/8;
-			if((TEMP/100)<-15){    //Very low temp
-				OFFi = OFFi+7*(TEMP+1500l)*(TEMP+1500l);
-				SENSi = SENSi+4*(TEMP+1500l)*(TEMP+1500l);
-			}
-		}
-		else if((TEMP/100)>=20){    //High temp
-			Ti = 2*(dT*dT)/(137438953472LL);
-			OFFi = (1*(TEMP-2000)*(TEMP-2000))/16;
-			SENSi = 0;
-		}
-	}
+    //Second order compensation
+    if ( _model == MS5837_02BA ) {
+        if((TEMP/100)<20){         //Low temp
+            Ti = (11*int64_t(dT)*int64_t(dT))/(34359738368LL);
+            OFFi = (31*(TEMP-2000)*(TEMP-2000))/8;
+            SENSi = (63*(TEMP-2000)*(TEMP-2000))/32;
+        }
+    } else {
+        if((TEMP/100)<20){         //Low temp
+            Ti = (3*int64_t(dT)*int64_t(dT))/(8589934592LL);
+            OFFi = (3*(TEMP-2000)*(TEMP-2000))/2;
+            SENSi = (5*(TEMP-2000)*(TEMP-2000))/8;
+            if((TEMP/100)<-15){    //Very low temp
+                OFFi = OFFi+7*(TEMP+1500l)*(TEMP+1500l);
+                SENSi = SENSi+4*(TEMP+1500l)*(TEMP+1500l);
+            }
+        }
+        else if((TEMP/100)>=20){    //High temp
+            Ti = 2*(dT*dT)/(137438953472LL);
+            OFFi = (1*(TEMP-2000)*(TEMP-2000))/16;
+            SENSi = 0;
+        }
+    }
 
-	OFF2 = OFF-OFFi;           //Calculate pressure and temp second order
-	SENS2 = SENS-SENSi;
+    OFF2 = OFF-OFFi;           //Calculate pressure and temp second order
+    SENS2 = SENS-SENSi;
 
-	TEMP = (TEMP-Ti);
+    TEMP = (TEMP-Ti);
 
-	if ( _model == MS5837_02BA ) {
-		P = (((D1*SENS2)/2097152l-OFF2)/32768l);
-	} else {
-		P = (((D1*SENS2)/2097152l-OFF2)/8192l);
-	}
+    if ( _model == MS5837_02BA ) {
+        P = (((D1*SENS2)/2097152l-OFF2)/32768l);
+    } else {
+        P = (((D1*SENS2)/2097152l-OFF2)/8192l);
+    }
 }
 
 float MS5837::pressure(float conversion) {
@@ -191,67 +184,67 @@ float MS5837::pressure(float conversion) {
 }
 
 float MS5837::temperature() {
-	return TEMP/100.0f;
+    return TEMP/100.0f;
 }
 
 float MS5837::depth() {
-	return (pressure(MS5837::Pa)-101300)/(fluidDensity*9.80665);
+    return (pressure(MS5837::Pa)-101300)/(fluidDensity*9.80665);
 }
 
 float MS5837::altitude() {
-	return (1-pow((pressure()/1013.25),.190284))*145366.45*.3048;
+    return (1-pow((pressure()/1013.25),.190284))*145366.45*.3048;
 }
 
 void MS5837::setOverSampling(int oversampling){
-	if (oversampling <= 5 || oversampling >= 0)
-	{
-		_oversampling = oversampling;
-	}
-	else
-	{
-		// Invalid oversampling option
-	}
+    if (oversampling <= 5 || oversampling >= 0)
+    {
+        _oversampling = oversampling;
+    }
+    else
+    {
+        // Invalid oversampling option
+    }
 }
 
 uint8_t MS5837::crc4(uint16_t n_prom[]) {
-	uint16_t n_rem = 0;
+    uint16_t n_rem = 0;
 
-	n_prom[0] = ((n_prom[0]) & 0x0FFF);
-	n_prom[7] = 0;
+    n_prom[0] = ((n_prom[0]) & 0x0FFF);
+    n_prom[7] = 0;
 
-	for ( uint8_t i = 0 ; i < 16; i++ ) {
-		if ( i%2 == 1 ) {
-			n_rem ^= (uint16_t)((n_prom[i>>1]) & 0x00FF);
-		} else {
-			n_rem ^= (uint16_t)(n_prom[i>>1] >> 8);
-		}
-		for ( uint8_t n_bit = 8 ; n_bit > 0 ; n_bit-- ) {
-			if ( n_rem & 0x8000 ) {
-				n_rem = (n_rem << 1) ^ 0x3000;
-			} else {
-				n_rem = (n_rem << 1);
-			}
-		}
-	}
+    for ( uint8_t i = 0 ; i < 16; i++ ) {
+        if ( i%2 == 1 ) {
+            n_rem ^= (uint16_t)((n_prom[i>>1]) & 0x00FF);
+        } else {
+            n_rem ^= (uint16_t)(n_prom[i>>1] >> 8);
+        }
+        for ( uint8_t n_bit = 8 ; n_bit > 0 ; n_bit-- ) {
+            if ( n_rem & 0x8000 ) {
+                n_rem = (n_rem << 1) ^ 0x3000;
+            } else {
+                n_rem = (n_rem << 1);
+            }
+        }
+    }
 
-	n_rem = ((n_rem >> 12) & 0x000F);
+    n_rem = ((n_rem >> 12) & 0x000F);
 
-	return n_rem ^ 0x00;
+    return n_rem ^ 0x00;
 }
 
 int main(int argc, char *argv[])
 {
-  MS5837 ms5837;
-  ms5837.init();
-	ms5837.setModel(MS5837::MS5837_30BA);
-  ms5837.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
-  ms5837.setOverSampling(5);
-	while(1) {
-		ms5837.read();
+    MS5837 ms5837;	
+    ms5837.init();
+    ms5837.setModel(MS5837::MS5837_30BA);
+    ms5837.setFluidDensity(997); // kg/m^3 (freshwater, 1029 for seawater)
+    ms5837.setOverSampling(5);
+    while(1) {
+        ms5837.read();
 
-		std::cout << "Pressure: " << ms5837.pressure() << " mbar" << std::endl;
-		std::cout << "Temperature: " << ms5837.temperature() << " deg C" << std::endl;
-		std::cout << "Depth: " << ms5837.depth() << " m" << std::endl;
-		std::cout << "Altitude: " << ms5837.altitude() << " m above mean sea level" << std::endl << std::endl;
-	}
+        std::cout << "Pressure: " << ms5837.pressure() << " mbar" << std::endl;
+        std::cout << "Temperature: " << ms5837.temperature() << " deg C" << std::endl;
+        std::cout << "Depth: " << ms5837.depth() << " m" << std::endl;
+        std::cout << "Altitude: " << ms5837.altitude() << " m above mean sea level" << std::endl << std::endl;
+    }
 }
